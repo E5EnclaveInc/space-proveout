@@ -11,6 +11,13 @@
 #   - Guest rootfs: ubuntu-24.04.squashfs from the same firecracker-ci/v1.15
 #     prefix (the vendor artifact path); the pinned 6.1.155 kernel config has
 #     CONFIG_SQUASHFS=y, CONFIG_SERIAL_8250_CONSOLE=y, CONFIG_VIRTIO_BLK=y.
+#
+# v2 (confirmation run only): stage 1's kill path captures the jailer exit
+# code instead of dying on it — in run 39168602101 the guest ignored
+# `poweroff -f`, the harness pkill landed, and `wait` returning 143 under
+# `bash -e` failed the step AFTER every decision-bearing event had succeeded
+# (marker + guest uname are in that run's uploaded console log). Nothing else
+# differs from v1.
 name: SPACE prove-out
 
 on:
@@ -129,8 +136,9 @@ jobs:
           exec 3>&-
           for i in $(seq 1 20); do kill -0 "$JPID" 2>/dev/null || break; sleep 1; done
           if kill -0 "$JPID" 2>/dev/null; then sudo pkill -f "jailer --id $ID" || true; sleep 2; fi
-          wait "$JPID" 2>/dev/null
-          echo "jailer/firecracker exit code: $?"
+          JPID_EXIT=0
+          wait "$JPID" 2>/dev/null || JPID_EXIT=$?
+          echo "jailer/firecracker exit code: $JPID_EXIT (143 expected: harness pkill after the guest rootfs ignored poweroff)"
           echo '===== GUEST CONSOLE LOG ====='
           cat "$CONSOLE"
           echo '===== END GUEST CONSOLE LOG ====='
